@@ -12,21 +12,21 @@ const MAX_ROUNDS = 4;
 const RUN_TIMEOUT_MS = 45 * 1000;
 const MAX_LOG = 100 * 1024;
 
-async function fetchPage(url) {
-  let parsed;
+const DEP_HOSTS = [
+  'raw.githubusercontent.com',
+  'cdn.jsdelivr.net',
+  'pastebin.com',
+  'paste.ee',
+  'rawcdn.githack.com',
+];
+
+async function doFetch(url, opts = {}) {
   try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== HOST) {
-    return null;
-  }
-  try {
-    const res = await fetch(parsed.href, {
-      redirect: 'error',
+    const res = await fetch(url, {
+      redirect: 'follow',
       signal: AbortSignal.timeout(15000),
       headers: { 'User-Agent': USER_AGENT },
+      ...opts,
     });
     if (!res.ok) {
       return null;
@@ -39,6 +39,36 @@ async function fetchPage(url) {
   } catch {
     return null;
   }
+}
+
+async function fetchPage(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== HOST) {
+    return null;
+  }
+  return doFetch(parsed.href, { redirect: 'error' });
+}
+
+async function fetchDep(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:') {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host !== HOST && !DEP_HOSTS.includes(host)) {
+    return null;
+  }
+  return doFetch(parsed.href);
 }
 
 async function readOptional(file) {
@@ -158,7 +188,7 @@ async function decode({ url, id }, deps = {}) {
         if (pages.size >= MAX_PAGES) {
           break;
         }
-        const body = await download(wantedUrl);
+        const body = await (deps.fetchDep || fetchDep)(wantedUrl);
         if (body) {
           pages.set(wantedUrl, body);
           added += 1;
@@ -183,4 +213,4 @@ async function decode({ url, id }, deps = {}) {
   }
 }
 
-module.exports = { decode, fetchPage };
+module.exports = { decode, fetchPage, fetchDep };
